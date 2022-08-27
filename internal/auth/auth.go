@@ -5,11 +5,42 @@ import (
 	"crypto/sha512"
 	"encoding/base64"
 	"fmt"
+	"log"
+	"net/http"
 	"os"
 	"strings"
 )
 
 /* Basic auth helper functions */
+
+/*
+checkAuth is a helper function that check's a user's credential when
+basic auth is enabled. Returns true if user successfully authenticated or
+if basic auth is disabled, return false otherwise.
+*/
+func CheckAuth(w http.ResponseWriter, r *http.Request, username, password string, auth bool) bool {
+	if auth {
+		user, pass, ok := r.BasicAuth()
+		if !ok || (user != username || !CheckPass(pass, password)) {
+			return false
+		}
+	}
+	return true
+
+}
+
+/*
+authFail sends a 401 unauthorized status code when a user fails to
+authenticate
+*/
+func AuthFail(w http.ResponseWriter, r *http.Request, verbose bool) {
+	if verbose {
+		log.Printf("CLIENT: %s PATH: %s: INCORRECT USERNAME/PASS\n",
+			r.RemoteAddr, r.RequestURI)
+	}
+	w.Header().Set("WWW-Authenticate", `Basic realm="api"`)
+	http.Error(w, "Unauthorized", http.StatusUnauthorized)
+}
 
 /*
 GetPass - Get password interactively from stdin,

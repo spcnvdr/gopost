@@ -7,44 +7,20 @@ package main
 
 import (
 	"crypto/tls"
-	"errors"
 	"flag"
 	"fmt"
 	"html/template"
 	"log"
-	"math"
 	"net/http"
 	"os"
-	"path/filepath"
-	"strconv"
-	"strings"
-	"time"
 
 	"github.com/spcnvdr/gopost/internal/auth"
 	"github.com/spcnvdr/gopost/internal/certs"
+	"github.com/spcnvdr/gopost/internal/fdata"
 	"github.com/spcnvdr/gopost/internal/files"
 )
 
 const Version = "mini server 0.1.4"
-
-/*
-File: a small struct to hold information about a file that can be easily
-displayed in templates
-*/
-type File struct {
-	Name  string
-	Size  string
-	Mode  string
-	Date  string
-	IsDir bool
-}
-
-/*
-	Files is a slice holding information about each file in the destination
-
-directory
-*/
-type Files []File
 
 /*
 Context is the struct containing all data passed to the template
@@ -53,7 +29,7 @@ type Context struct {
 	Title     string
 	Directory string // Current directory user is in
 	Parent    string // The parent directory
-	Files     Files
+	Files     fdata.Files
 }
 
 // global variables for command line arguments
@@ -117,18 +93,6 @@ func main() {
 		log.Fatalln(Version)
 	}
 
-	// Require folder argument to run
-	if len(flag.Args()) == 0 {
-		printUsage()
-	}
-
-	FILE_PATH = flag.Arg(0)
-
-	// check path is a directory and can be accessed
-	if err := files.CheckDir(FILE_PATH); err != nil {
-		log.Fatalf("%v", err)
-	}
-
 	// make sure cert and key are given
 	checkPem(CERT, KEY)
 
@@ -173,13 +137,6 @@ func main() {
 
 }
 
-// printUsage - Print a simple usage message and exit.
-func printUsage() {
-	fmt.Fprintf(os.Stderr, "usage: mini [-tv?V] [-c file] [-i host] [-k file] [-p port] [-u user] folder\n")
-	fmt.Fprintf(os.Stderr, `Try 'mini --help' or 'mini -h' for more information`+"\n")
-	os.Exit(1)
-}
-
 // printHelp - Print a custom detailed help message.
 func printHelp() {
 
@@ -211,11 +168,8 @@ func checkPem(cert, key string) {
 // setupRoutes, helper function to configure routes and handlers
 func setupRoutes() {
 	// setup our routes
-	http.HandleFunc("/", redirectRoot)
-	http.HandleFunc("/get", getFile)
-	http.HandleFunc("/upload", uploadFiles)
-	http.HandleFunc("/view", viewDir)
-	http.HandleFunc("/delete", deleteFile)
+	http.HandleFunc("/", root)
+	http.HandleFunc("/icons/ubuntu-logo.png", getIcon)
 }
 
 // setupServerConfig creates an http.Server configuration for the given host
@@ -255,283 +209,36 @@ func formatURL(tls bool, host, port string) string {
 	}
 }
 
-// sizeToStr converts a file size in bytes to a human friendy string.
-func sizeToStr(n int64) string {
-	if n == 0 {
-		return "0B"
-	}
-
-	b := float64(n)
-	units := []string{"B", "K", "M", "G", "T", "P", "E"}
-
-	i := math.Floor(math.Log(b) / math.Log(1024))
-	return strconv.FormatFloat((b/math.Pow(1024, i))*1, 'f', 1, 64) + units[int(i)]
-}
-
-/*
-fileFunc is called on each file in the target directory and returns
-a Files struct with the relevant information about each file.
-*/
-func fileFunc(path string) (Files, error) {
-	var fs Files
-
-	files, err := os.ReadDir(path)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	for _, file := range files {
-		var f File
-
-		finfo, err := file.Info()
-		if err != nil {
-			continue
-		}
-
-		f.Name = finfo.Name()
-		f.Size = sizeToStr(finfo.Size())
-		f.Mode = finfo.Mode().String()
-		f.Date = finfo.ModTime().Format(time.UnixDate)
-		f.IsDir = finfo.IsDir()
-		fs = append(fs, f)
-	}
-	return fs, nil
-}
-
 /* Server helper functions and handlers */
 
-/*
-checkAuth is a helper function that check's a user's credential when
-basic auth is enabled. Returns true if user successfully authenticated or
-if basic auth is disabled, return false otherwise.
-*/
-func checkAuth(w http.ResponseWriter, r *http.Request) bool {
-	if AUTH {
-		user, pass, ok := r.BasicAuth()
-		if !ok || (user != USER || !auth.CheckPass(pass, PASS)) {
-			return false
-		}
-	}
-	return true
-
-}
-
-/*
-authFail sends a 401 unauthorized status code when a user fails to
-authenticate
-*/
-func authFail(w http.ResponseWriter, r *http.Request) {
-	if VERBOSE {
-		log.Printf("CLIENT: %s PATH: %s: INCORRECT USERNAME/PASS\n",
-			r.RemoteAddr, r.RequestURI)
-	}
-	w.Header().Set("WWW-Authenticate", `Basic realm="api"`)
-	http.Error(w, "Unauthorized", http.StatusUnauthorized)
-}
-
-// redirectRoot redirects server root to /view?dir=/.
-func redirectRoot(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, "/view?dir=/", http.StatusFound)
-}
-
-// getFile serves a single file requested via URL
-func getFile(w http.ResponseWriter, r *http.Request) {
-	// if basic auth, must be logged in to download
-	if !checkAuth(w, r) {
-		authFail(w, r)
-		return
-	}
-
-	keys, ok := r.URL.Query()["file"]
-	if !ok || len(keys[0]) < 1 {
-		log.Println("Url Param 'key' is missing")
-		redirectRoot(w, r)
-	}
-
-	file := keys[0]
-	if strings.Contains(file, "..") {
-		// prevent path traversal
-		http.Redirect(w, r, "/", http.StatusFound)
-		return
-	}
-
-	path := filepath.Clean(filepath.Join(FILE_PATH, file))
-
-	// Set header so user sees the original filename in the download box
-	filename := filepath.Base(path)
-	w.Header().Set("Content-Disposition", "attachment; filename="+filename)
-
-	if VERBOSE {
-		log.Printf("CLIENT: %s DOWNLOAD: %s\n", r.RemoteAddr, path)
-	}
-
-	http.ServeFile(w, r, path)
-}
-
-/*
-viewDir is called when a person clicks a directory link, displays files in
-the directory.
-*/
-func viewDir(w http.ResponseWriter, r *http.Request) {
-	// the HTML template to display files
-	htmltemp := `<!DOCTYPE html>
-	<html lang="en" dir="ltr">
-		<head>
-			<meta charset="utf-8">
-			<meta name="viewport"
-				content="width=device-width, initial-scale=1, shrink-to-fit=no">
-			<meta name="description" content="Simple file server">
-			<!-- prevent favicon requests -->
-			<link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgo=">
-			<title>{{ .Title }}</title>
-			<style>
-				tbody tr:nth-child(odd) {
-					background-color: #eeeeee;
-			  	}
-				@media (min-width:960px) { 
-					.upload-form {
-						max-width: 40%;
-					}
-				}
-			</style>
-		</head>
-		<body>
-		<h2>{{.Title}}</h2>
-		<p>
-			<form enctype="multipart/form-data"
-				action="/upload"
-				method="POST"
-				class="upload-form">
-				<fieldset>
-					<legend>Upload new file/files</legend>
-					<input type="hidden" id="directory" type="text" name="directory" value="{{ .Directory }}">
-					<input type="file" placeholder="Filename" name="file-upload" required multiple>
-					<button type="submit">Upload</button>
-				</fieldset>
-			</form>
-		</p>
-		{{ if eq .Directory "/" }}
-			<p></p>
-		{{ else }}
-		<p>
-			<a href="/view?dir={{ .Parent }}">To Parent Directory</a>
-		</p>
-		{{ end }}
-		<p>
-		<table>
-			<thead>
-				<tr>
-					<th>Filename</th>
-					<th>Size</th>
-					<th>Mode</th>
-					<th>Last Modified</th>
-					<th>Delete</th>
-				</tr>
-			</thead>
-			<tbody>
-				{{range .Files}}
-					<tr>
-						<td>
-							{{ if .IsDir }}
-								{{ if eq $.Directory  "/" }}
-									<a href="/view?dir={{ .Name }}">{{ .Name }}/</a>
-								{{ else }}
-									<a href="/view?dir={{ $.Directory }}/{{ .Name }}">{{ .Name }}/</a>
-								{{ end }}
-							{{ else }}
-								{{ if eq $.Directory  "/" }}
-									<a download href="/get?file={{ .Name }}">{{ .Name }}</a>
-									
-								{{ else }}
-									<a download href="/get?file={{ $.Directory }}/{{ .Name }}">{{ .Name }}</a>
-								{{ end }}
-							{{ end }}
-						</td>
-						<td>{{ .Size }}</td>
-						<td>{{ .Mode }}</td>
-						<td>{{ .Date}}</td>
-						<td>
-							<form action="/delete" method="POST" class="form-example">
-								<div>
-									<input type="hidden" id="directory" type="text" name="directory" value="{{ $.Directory }}">
-									<input type="hidden" id="file" type="file" name="filename" value="{{ .Name }}">
-									<input type="submit" value="Delete">
-								</div>
-							</form>
-					  </td>
-					</tr>
-				{{ end }}
-			</tbody>
-		</table>
-		</p>
-		</body>
-	</html>`
-
-	// check basic auth if enabled
-	if !checkAuth(w, r) {
-		authFail(w, r)
-		return
-	}
-
-	if VERBOSE {
-		log.Printf("CLIENT: %s PATH: %s\n", r.RemoteAddr, r.RequestURI)
-	}
-
-	keys, ok := r.URL.Query()["dir"]
-
-	if !ok || len(keys[0]) < 1 {
-		log.Println("Url Param 'key' is missing")
-		http.Redirect(w, r, "/view?dir=/", http.StatusFound)
-		return
-	}
-
-	dir := filepath.Clean(keys[0])
-
-	// Handle Windows paths, filepath is the OS independent way to handle paths
-	dir = filepath.ToSlash(dir)
-
-	// What is the parent for current folder?
-	parent := filepath.Dir(dir)
-	if parent == "." {
-		parent = "/"
-	}
-
-	if strings.Contains(dir, "..") {
-		// prevent path traversal
-		http.Redirect(w, r, "/view?dir/", http.StatusFound)
-		return
-	}
-
-	// create real path from the server's root folder and navigated folder
-	path := filepath.Clean(filepath.Join(FILE_PATH, dir))
-
-	// get list of files in directory
-	f, err := fileFunc(path)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Create data for templates, parse and execute template
-	title := "Directory listing for " + dir
-	context := Context{title, dir, parent, f}
-	templates := template.Must(template.New("foo").Parse(htmltemp))
-
-	if err := templates.Execute(w, context); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
-
 // uploadFile called when a user chooses a file and clicks the upload button.
-func uploadFiles(w http.ResponseWriter, r *http.Request) {
+func root(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Server", "Apache/2.4.54 (Ubuntu)")
 	if r.Method != "POST" {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		if VERBOSE {
+			log.Printf("CLIENT: %s %s: %s\n", r.RemoteAddr, r.Method, r.RequestURI)
+		}
+
+		if r.URL.Path != "/" {
+			templates := template.Must(template.ParseFiles("../resources/templates/404.html"))
+			w.WriteHeader(http.StatusNotFound)
+			if err := templates.Execute(w, nil); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+			return
+		}
+
+		templates := template.Must(template.ParseFiles("../resources/templates/index.html"))
+
+		if err := templates.Execute(w, nil); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 
 	// check basic auth if enabled
-	if !checkAuth(w, r) {
-		authFail(w, r)
+	if !auth.CheckAuth(w, r, USER, PASS, AUTH) {
+		auth.AuthFail(w, r, VERBOSE)
 		return
 	}
 
@@ -539,17 +246,14 @@ func uploadFiles(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 
-	uploadFiles := r.MultipartForm.File["file-upload"]
-
-	dir := filepath.Clean(r.FormValue("directory"))
-	if strings.Contains(dir, "..") {
-		// prevent path traversal, redirect to home page
-		http.Redirect(w, r, "/view?dir=/", http.StatusFound)
+	// prevents a panic when scanned with nmap
+	if r.MultipartForm == nil {
 		return
 	}
+	uploadFiles := r.MultipartForm.File["files"]
 
 	for i := range uploadFiles {
-		path := filepath.Clean(filepath.Join(FILE_PATH, dir, uploadFiles[i].Filename))
+		path := "./" + uploadFiles[i].Filename
 
 		file, err := uploadFiles[i].Open()
 		if err != nil {
@@ -567,57 +271,25 @@ func uploadFiles(w http.ResponseWriter, r *http.Request) {
 		}
 
 	}
-
-	// reload the current page on successful upload
-	http.Redirect(w, r, "view?dir="+dir, http.StatusFound)
 }
 
-/*
-deleteFile is called when the delete button is clicked next to a file.
-It checks that the file exists in the FILE_PATH directory and deletes it
-if it exists.
-*/
-func deleteFile(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+// serve the Ubuntu icon on the index page manually
+func getIcon(w http.ResponseWriter, r *http.Request) {
+	// if basic auth, must be logged in to download
+	if !auth.CheckAuth(w, r, USER, PASS, AUTH) {
+		auth.AuthFail(w, r, VERBOSE)
 		return
 	}
 
-	// check basic auth if enabled
-	if !checkAuth(w, r) {
-		authFail(w, r)
-		return
-	}
-	// Get the name of the file to delete
-	filename := r.FormValue("filename")
-	if filename == "" {
-		http.Error(w, "missing form value", http.StatusInternalServerError)
-	}
+	path := "../resources/static/images/ubuntu-logo.png"
 
-	if strings.Contains(filename, "..") {
-		// prevent path traversal deletion
-		http.Redirect(w, r, "/", http.StatusFound)
-		return
-	}
-
-	// Get the directory to delete file from
-	dir := r.FormValue("directory")
-
-	// build path to the file
-	path := filepath.Clean(filepath.Join(FILE_PATH, dir, filename))
-
-	// Make sure file exists
-	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-
-	// ignore errors
-	os.Remove(path)
+	// Set header so user sees the original filename in the download box
+	//filename := filepath.Base(path)
+	//w.Header().Set("Content-Disposition", "attachment; filename="+filename)
 
 	if VERBOSE {
-		log.Printf("CLIENT: %s DELETED: %s\n", r.RemoteAddr, path)
+		log.Printf("CLIENT: %s DOWNLOAD: %s\n", r.RemoteAddr, path)
 	}
 
-	// reload the current page
-	http.Redirect(w, r, "view?dir="+dir, http.StatusFound)
+	http.ServeFile(w, r, path)
 }
