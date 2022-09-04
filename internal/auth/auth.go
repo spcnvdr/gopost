@@ -12,6 +12,27 @@ import (
 )
 
 /* Basic auth helper functions */
+/*
+basicAuth require authentication, if enabled on cmd line, to directly view
+static files. This is basically a wrapper around Go's built in http.FileServer
+which enables basic auth to view the files hosted by http.FileServer.
+*/
+func BasicAuth(h http.Handler, username string, password string, auth, verbose bool) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if verbose {
+			log.Printf("CLIENT: %s PATH: %s\n", r.RemoteAddr, r.RequestURI)
+		}
+
+		if auth {
+			user, pass, ok := r.BasicAuth()
+			if !ok || (user != username || !CheckPass(pass, password)) {
+				AuthFail(w, r, verbose)
+				return
+			}
+		}
+		h.ServeHTTP(w, r)
+	})
+}
 
 /*
 checkAuth is a helper function that check's a user's credential when

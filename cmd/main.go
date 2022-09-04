@@ -20,7 +20,7 @@ import (
 	"github.com/spcnvdr/gopost/internal/files"
 )
 
-const Version = "mini server 0.1.4"
+const Version = "gopost 0.0.1"
 
 /*
 Context is the struct containing all data passed to the template
@@ -40,6 +40,7 @@ var (
 	KEY       string
 	PASS      string
 	PORT      string
+	SERVE     string
 	TLS       bool
 	USER      string
 	VERBOSE   bool
@@ -65,6 +66,9 @@ func init() {
 	// enable TLS
 	flag.BoolVar(&TLS, "tls", false, "Generate and use self-signed TLS cert/key")
 	flag.BoolVar(&TLS, "t", false, "TLS shortcut")
+
+	flag.StringVar(&SERVE, "serve", "", "Serve files from FOLDER for downloading")
+	flag.StringVar(&SERVE, "s", "", "Serve shortcut")
 
 	// Use custom TLS key
 	flag.StringVar(&KEY, "key", "", "Use custom TLS Key, must also provide cert in PEM")
@@ -115,8 +119,11 @@ func main() {
 		PASS = auth.GetPass()
 	}
 
-	// setup our routes
-	setupRoutes()
+	if SERVE != "" {
+		setupDownloadRoutes(SERVE)
+	} else {
+		setupUploadRoutes()
+	}
 
 	// start server, bail if error
 	serving := HOST + ":" + PORT
@@ -140,12 +147,13 @@ func main() {
 // printHelp - Print a custom detailed help message.
 func printHelp() {
 
-	fmt.Fprintf(os.Stderr, "Usage: mini [OPTION...] FOLDER\n")
-	fmt.Fprintf(os.Stderr, "Serve the given folder via an HTTP/S server\n\n")
+	fmt.Fprintf(os.Stderr, "Usage: gopost [OPTION...]\n")
+	fmt.Fprintf(os.Stderr, "HTTP/S server that accepts uploads or serves folder for downloads\n\n")
 	fmt.Fprintf(os.Stderr, "  -c, --cert=CERT           Use the provided PEM cert for TLS, MUST also use -k\n")
 	fmt.Fprintf(os.Stderr, "  -i, --ip=HOST             IP address to serve on; default 0.0.0.0\n")
 	fmt.Fprintf(os.Stderr, "  -k, --key=KEY             Use provided PEM key for TLS, MUST also use -c\n")
 	fmt.Fprintf(os.Stderr, "  -p, --port=PORT           Port to serve on: default 8080\n")
+	fmt.Fprintf(os.Stderr, "  -s  --serve=FOLDER        Serve FOLDER for downloads instead of uploads\n")
 	fmt.Fprintf(os.Stderr, "  -t, --tls                 Generate and use self-signed TLS cert.\n")
 	fmt.Fprintf(os.Stderr, "  -u, --user=USERNAME       Enable basic auth. with this username\n")
 	fmt.Fprintf(os.Stderr, "  -v, --verbose             Enable verbose logging mode\n")
@@ -165,11 +173,16 @@ func checkPem(cert, key string) {
 	}
 }
 
-// setupRoutes, helper function to configure routes and handlers
-func setupRoutes() {
+// setupUploadRoutes, helper function to configure routes and handlers
+func setupUploadRoutes() {
 	// setup our routes
 	http.HandleFunc("/", root)
 	http.HandleFunc("/icons/ubuntu-logo.png", getIcon)
+}
+
+// setupDownloadRoutes sets up the routes when the server is used for downloads
+func setupDownloadRoutes(root string) {
+	http.Handle("/", http.StripPrefix("/", auth.BasicAuth(http.FileServer(http.Dir(root)), USER, PASS, AUTH, VERBOSE)))
 }
 
 // setupServerConfig creates an http.Server configuration for the given host
@@ -211,14 +224,23 @@ func formatURL(tls bool, host, port string) string {
 
 /* Server helper functions and handlers */
 
-// uploadFile called when a user chooses a file and clicks the upload button.
+// root page for uploads, behave like a default Apache site, accept multiple
+// file uploads via files POST param
 func root(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Server", "Apache/2.4.54 (Ubuntu)")
+
+	// check basic auth if enabled
+	if !auth.CheckAuth(w, r, USER, PASS, AUTH) {
+		auth.AuthFail(w, r, VERBOSE)
+		return
+	}
+
 	if r.Method != "POST" {
 		if VERBOSE {
 			log.Printf("CLIENT: %s %s: %s\n", r.RemoteAddr, r.Method, r.RequestURI)
 		}
 
+		// if they requast anything that isn't the root, respond with 404
 		if r.URL.Path != "/" {
 			templates := template.Must(template.ParseFiles("../resources/templates/404.html"))
 			w.WriteHeader(http.StatusNotFound)
@@ -228,17 +250,11 @@ func root(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// parse and execute Apache home template
 		templates := template.Must(template.ParseFiles("../resources/templates/index.html"))
-
 		if err := templates.Execute(w, nil); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
-		return
-	}
-
-	// check basic auth if enabled
-	if !auth.CheckAuth(w, r, USER, PASS, AUTH) {
-		auth.AuthFail(w, r, VERBOSE)
 		return
 	}
 
