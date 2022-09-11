@@ -64,7 +64,7 @@ file uploads to the current directory
 
     ./gopost
 
-Generate self-signed TLS certs and serve directory for downloading
+Generate self-signed TLS certs and serve FOLDER for downloading
 
     ./gopost -t -s FOLDER
 
@@ -72,22 +72,25 @@ Set up basic auth with existing TLS certs. Basic auth will
 interactively prompt for a password to avoid storing a password 
 in .bash_history or other command line logs. 
 
-    ./gopost -c cert.pem -k key.pem -u Bob /home/user/files
+    ./gopost -c cert.pem -k key.pem -u Bob
 
 This server accepts multiple file uploads from the command line 
 using cURL. Add the --insecure option if using a self-signed certificate.
 If using basic authentication, add the following to 
 the commands: -u login:password
 
-    curl -X POST https://IP:PORT/upload -F 'files=@./myfile.txt' -F 'files=@./myfile.pdf' --insecure
+    curl -X POST https://IP:PORT/ -F 'files=@./myfile.txt' -F 'files=@./myfile.pdf' --insecure
 
-    curl -X POST http://IP:PORT/upload -F 'files=@./myfile.txt' -F 'files=@./myfile.pdf'
+or for when running plain HTTP:
+
+    curl -X POST http://IP:PORT/ -F 'files=@./myfile.txt' -F 'files=@./myfile.pdf'
 
 
 **To Do**
 
 [ ] - Remove any unneeded functions/packages
-[ ] - Add Nginx default pages
+[ ] - Add Nginx default pages and option to impersonate Nginx
+[ ] - Make response headers match exactly Apache/Nginx
 [ ] - clean up code
 
 

@@ -1,3 +1,4 @@
+// Package files contains functions for handling files
 package files
 
 import (
@@ -9,8 +10,6 @@ import (
 	"mime/multipart"
 	"os"
 )
-
-/* File Functions */
 
 /*
 createFile helper function to create a new file and return the file descriptor

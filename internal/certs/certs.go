@@ -1,3 +1,4 @@
+// Package certs generates self-signed TLS keys with related helper functions
 package certs
 
 import (
@@ -16,8 +17,6 @@ import (
 
 	"github.com/spcnvdr/gopost/internal/files"
 )
-
-/* Generate TLS keys and helper functions */
 
 /*
 genKeys - Generate self-signed TLS certificate and key.

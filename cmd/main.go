@@ -16,21 +16,10 @@ import (
 
 	"github.com/spcnvdr/gopost/internal/auth"
 	"github.com/spcnvdr/gopost/internal/certs"
-	"github.com/spcnvdr/gopost/internal/fdata"
 	"github.com/spcnvdr/gopost/internal/files"
 )
 
 const Version = "gopost 0.0.1"
-
-/*
-Context is the struct containing all data passed to the template
-*/
-type Context struct {
-	Title     string
-	Directory string // Current directory user is in
-	Parent    string // The parent directory
-	Files     fdata.Files
-}
 
 // global variables for command line arguments
 var (
@@ -291,6 +280,8 @@ func root(w http.ResponseWriter, r *http.Request) {
 
 // serve the Ubuntu icon on the index page manually
 func getIcon(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Server", "Apache/2.4.54 (Ubuntu)")
+
 	// if basic auth, must be logged in to download
 	if !auth.CheckAuth(w, r, USER, PASS, AUTH) {
 		auth.AuthFail(w, r, VERBOSE)
