@@ -18,7 +18,7 @@ import (
 	"github.com/spcnvdr/gopost/internal/certs"
 )
 
-const Version = "gopost 0.0.1"
+const Version = "gopost 0.0.2"
 
 // global variables for command line arguments
 var (
