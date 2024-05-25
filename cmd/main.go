@@ -9,14 +9,13 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
-	"html/template"
 	"log"
 	"net/http"
 	"os"
 
+	"github.com/spcnvdr/gopost/internal/apache"
 	"github.com/spcnvdr/gopost/internal/auth"
 	"github.com/spcnvdr/gopost/internal/certs"
-	"github.com/spcnvdr/gopost/internal/files"
 )
 
 const Version = "gopost 0.0.1"
@@ -108,10 +107,12 @@ func main() {
 		PASS = auth.GetPass()
 	}
 
+	as := apache.NewApacheServer(USER, PASS, AUTH, VERBOSE)
+
 	if SERVE != "" {
 		setupDownloadRoutes(SERVE)
 	} else {
-		setupUploadRoutes()
+		as.SetupRoutes()
 	}
 
 	// start server, bail if error
@@ -163,11 +164,11 @@ func checkPem(cert, key string) {
 }
 
 // setupUploadRoutes, helper function to configure routes and handlers
-func setupUploadRoutes() {
-	// setup our routes
-	http.HandleFunc("/", root)
-	http.HandleFunc("/icons/ubuntu-logo.png", getIcon)
-}
+// func setupUploadRoutes() {
+// 	// setup our routes
+// 	http.HandleFunc("/", root)
+// 	http.HandleFunc("/icons/ubuntu-logo.png", getIcon)
+// }
 
 // setupDownloadRoutes sets up the routes when the server is used for downloads
 func setupDownloadRoutes(root string) {
@@ -215,88 +216,88 @@ func formatURL(tls bool, host, port string) string {
 
 // root page for uploads, behave like a default Apache site, accept multiple
 // file uploads via files POST param
-func root(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Server", "Apache/2.4.54 (Ubuntu)")
+// func root(w http.ResponseWriter, r *http.Request) {
+// 	w.Header().Set("Server", "Apache/2.4.54 (Ubuntu)")
 
-	// check basic auth if enabled
-	if !auth.CheckAuth(w, r, USER, PASS, AUTH) {
-		auth.AuthFail(w, r, VERBOSE)
-		return
-	}
+// 	// check basic auth if enabled
+// 	if !auth.CheckAuth(w, r, USER, PASS, AUTH) {
+// 		auth.AuthFail(w, r, VERBOSE)
+// 		return
+// 	}
 
-	if r.Method != "POST" {
-		if VERBOSE {
-			log.Printf("CLIENT: %s %s: %s\n", r.RemoteAddr, r.Method, r.RequestURI)
-		}
+// 	if r.Method != "POST" {
+// 		if VERBOSE {
+// 			log.Printf("CLIENT: %s %s: %s\n", r.RemoteAddr, r.Method, r.RequestURI)
+// 		}
 
-		// if they requast anything that isn't the root, respond with 404
-		if r.URL.Path != "/" {
-			templates := template.Must(template.ParseFiles("../resources/templates/404.html"))
-			w.WriteHeader(http.StatusNotFound)
-			if err := templates.Execute(w, nil); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-			}
-			return
-		}
+// 		// if they requast anything that isn't the root, respond with 404
+// 		if r.URL.Path != "/" {
+// 			templates := template.Must(template.ParseFiles("../resources/templates/404.html"))
+// 			w.WriteHeader(http.StatusNotFound)
+// 			if err := templates.Execute(w, nil); err != nil {
+// 				http.Error(w, err.Error(), http.StatusInternalServerError)
+// 			}
+// 			return
+// 		}
 
-		// parse and execute Apache home template
-		templates := template.Must(template.ParseFiles("../resources/templates/index.html"))
-		if err := templates.Execute(w, nil); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-		return
-	}
+// 		// parse and execute Apache home template
+// 		templates := template.Must(template.ParseFiles("../resources/templates/index.html"))
+// 		if err := templates.Execute(w, nil); err != nil {
+// 			http.Error(w, err.Error(), http.StatusInternalServerError)
+// 		}
+// 		return
+// 	}
 
-	if err := r.ParseMultipartForm(32 << 20); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
+// 	if err := r.ParseMultipartForm(32 << 20); err != nil {
+// 		http.Error(w, err.Error(), http.StatusInternalServerError)
+// 	}
 
-	// prevents a panic when scanned with nmap
-	if r.MultipartForm == nil {
-		return
-	}
-	uploadFiles := r.MultipartForm.File["files"]
+// 	// prevents a panic when scanned with nmap
+// 	if r.MultipartForm == nil {
+// 		return
+// 	}
+// 	uploadFiles := r.MultipartForm.File["files"]
 
-	for i := range uploadFiles {
-		path := "./" + uploadFiles[i].Filename
+// 	for i := range uploadFiles {
+// 		path := "./" + uploadFiles[i].Filename
 
-		file, err := uploadFiles[i].Open()
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
+// 		file, err := uploadFiles[i].Open()
+// 		if err != nil {
+// 			http.Error(w, err.Error(), http.StatusInternalServerError)
+// 		}
 
-		defer file.Close()
+// 		defer file.Close()
 
-		if err = files.CopyUploadFile(path, file); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
+// 		if err = files.CopyUploadFile(path, file); err != nil {
+// 			http.Error(w, err.Error(), http.StatusInternalServerError)
+// 		}
 
-		if VERBOSE {
-			log.Printf("CLIENT: %s UPLOAD: %s\n", r.RemoteAddr, path)
-		}
+// 		if VERBOSE {
+// 			log.Printf("CLIENT: %s UPLOAD: %s\n", r.RemoteAddr, path)
+// 		}
 
-	}
-}
+// 	}
+// }
 
 // serve the Ubuntu icon on the index page manually
-func getIcon(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Server", "Apache/2.4.54 (Ubuntu)")
+// func getIcon(w http.ResponseWriter, r *http.Request) {
+// 	w.Header().Set("Server", "Apache/2.4.54 (Ubuntu)")
 
-	// if basic auth, must be logged in to download
-	if !auth.CheckAuth(w, r, USER, PASS, AUTH) {
-		auth.AuthFail(w, r, VERBOSE)
-		return
-	}
+// 	// if basic auth, must be logged in to download
+// 	if !auth.CheckAuth(w, r, USER, PASS, AUTH) {
+// 		auth.AuthFail(w, r, VERBOSE)
+// 		return
+// 	}
 
-	path := "../resources/static/images/ubuntu-logo.png"
+// 	path := "../resources/static/images/ubuntu-logo.png"
 
-	// Set header so user sees the original filename in the download box
-	//filename := filepath.Base(path)
-	//w.Header().Set("Content-Disposition", "attachment; filename="+filename)
+// 	// Set header so user sees the original filename in the download box
+// 	//filename := filepath.Base(path)
+// 	//w.Header().Set("Content-Disposition", "attachment; filename="+filename)
 
-	if VERBOSE {
-		log.Printf("CLIENT: %s DOWNLOAD: %s\n", r.RemoteAddr, path)
-	}
+// 	if VERBOSE {
+// 		log.Printf("CLIENT: %s DOWNLOAD: %s\n", r.RemoteAddr, path)
+// 	}
 
-	http.ServeFile(w, r, path)
-}
+// 	http.ServeFile(w, r, path)
+// }
