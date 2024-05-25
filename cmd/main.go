@@ -28,6 +28,7 @@ var (
 	KEY       string
 	PASS      string
 	PORT      string
+	QUERY     string
 	SERVE     string
 	TLS       bool
 	USER      string
@@ -50,6 +51,10 @@ func init() {
 	// port
 	flag.StringVar(&PORT, "port", "8080", "Port to listen on, defaults to 8080")
 	flag.StringVar(&PORT, "p", "8080", "Port shortcut")
+
+	// query string to use for file upload
+	flag.StringVar(&QUERY, "query", "files", "The parameter to use for file uploads")
+	flag.StringVar(&QUERY, "q", "files", "Query shortut")
 
 	// enable TLS
 	flag.BoolVar(&TLS, "tls", false, "Generate and use self-signed TLS cert/key")
@@ -107,7 +112,7 @@ func main() {
 		PASS = auth.GetPass()
 	}
 
-	as := apache.NewApacheServer(USER, PASS, AUTH, VERBOSE)
+	as := apache.NewApacheServer(USER, PASS, AUTH, VERBOSE, QUERY)
 
 	if SERVE != "" {
 		setupDownloadRoutes(SERVE)
@@ -143,6 +148,7 @@ func printHelp() {
 	fmt.Fprintf(os.Stderr, "  -i, --ip=HOST             IP address to serve on; default 0.0.0.0\n")
 	fmt.Fprintf(os.Stderr, "  -k, --key=KEY             Use provided PEM key for TLS, MUST also use -c\n")
 	fmt.Fprintf(os.Stderr, "  -p, --port=PORT           Port to serve on: default 8080\n")
+	fmt.Fprintf(os.Stderr, "  -q, --query=STRING        The parameter name to expect file uploads to use in request body\n")
 	fmt.Fprintf(os.Stderr, "  -s  --serve=FOLDER        Serve FOLDER for downloads instead of uploads\n")
 	fmt.Fprintf(os.Stderr, "  -t, --tls                 Generate and use self-signed TLS cert.\n")
 	fmt.Fprintf(os.Stderr, "  -u, --user=USERNAME       Enable basic auth. with this username\n")
@@ -211,93 +217,3 @@ func formatURL(tls bool, host, port string) string {
 		return fmt.Sprintf("%s:%s", host, port)
 	}
 }
-
-/* Server helper functions and handlers */
-
-// root page for uploads, behave like a default Apache site, accept multiple
-// file uploads via files POST param
-// func root(w http.ResponseWriter, r *http.Request) {
-// 	w.Header().Set("Server", "Apache/2.4.54 (Ubuntu)")
-
-// 	// check basic auth if enabled
-// 	if !auth.CheckAuth(w, r, USER, PASS, AUTH) {
-// 		auth.AuthFail(w, r, VERBOSE)
-// 		return
-// 	}
-
-// 	if r.Method != "POST" {
-// 		if VERBOSE {
-// 			log.Printf("CLIENT: %s %s: %s\n", r.RemoteAddr, r.Method, r.RequestURI)
-// 		}
-
-// 		// if they requast anything that isn't the root, respond with 404
-// 		if r.URL.Path != "/" {
-// 			templates := template.Must(template.ParseFiles("../resources/templates/404.html"))
-// 			w.WriteHeader(http.StatusNotFound)
-// 			if err := templates.Execute(w, nil); err != nil {
-// 				http.Error(w, err.Error(), http.StatusInternalServerError)
-// 			}
-// 			return
-// 		}
-
-// 		// parse and execute Apache home template
-// 		templates := template.Must(template.ParseFiles("../resources/templates/index.html"))
-// 		if err := templates.Execute(w, nil); err != nil {
-// 			http.Error(w, err.Error(), http.StatusInternalServerError)
-// 		}
-// 		return
-// 	}
-
-// 	if err := r.ParseMultipartForm(32 << 20); err != nil {
-// 		http.Error(w, err.Error(), http.StatusInternalServerError)
-// 	}
-
-// 	// prevents a panic when scanned with nmap
-// 	if r.MultipartForm == nil {
-// 		return
-// 	}
-// 	uploadFiles := r.MultipartForm.File["files"]
-
-// 	for i := range uploadFiles {
-// 		path := "./" + uploadFiles[i].Filename
-
-// 		file, err := uploadFiles[i].Open()
-// 		if err != nil {
-// 			http.Error(w, err.Error(), http.StatusInternalServerError)
-// 		}
-
-// 		defer file.Close()
-
-// 		if err = files.CopyUploadFile(path, file); err != nil {
-// 			http.Error(w, err.Error(), http.StatusInternalServerError)
-// 		}
-
-// 		if VERBOSE {
-// 			log.Printf("CLIENT: %s UPLOAD: %s\n", r.RemoteAddr, path)
-// 		}
-
-// 	}
-// }
-
-// serve the Ubuntu icon on the index page manually
-// func getIcon(w http.ResponseWriter, r *http.Request) {
-// 	w.Header().Set("Server", "Apache/2.4.54 (Ubuntu)")
-
-// 	// if basic auth, must be logged in to download
-// 	if !auth.CheckAuth(w, r, USER, PASS, AUTH) {
-// 		auth.AuthFail(w, r, VERBOSE)
-// 		return
-// 	}
-
-// 	path := "../resources/static/images/ubuntu-logo.png"
-
-// 	// Set header so user sees the original filename in the download box
-// 	//filename := filepath.Base(path)
-// 	//w.Header().Set("Content-Disposition", "attachment; filename="+filename)
-
-// 	if VERBOSE {
-// 		log.Printf("CLIENT: %s DOWNLOAD: %s\n", r.RemoteAddr, path)
-// 	}
-
-// 	http.ServeFile(w, r, path)
-// }

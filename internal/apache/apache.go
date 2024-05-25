@@ -11,6 +11,7 @@ import (
 )
 
 type ApacheServer struct {
+	query    string
 	username string
 	password string
 	auth     bool
@@ -18,12 +19,13 @@ type ApacheServer struct {
 }
 
 // NewApacheServer creates a new instance of ApacheServer
-func NewApacheServer(username, password string, auth, verbose bool) *ApacheServer {
+func NewApacheServer(username, password string, auth, verbose bool, query string) *ApacheServer {
 	var as = new(ApacheServer)
 	as.username = username
 	as.password = password
 	as.auth = auth
 	as.verbose = verbose
+	as.query = query
 	return as
 }
 
@@ -81,7 +83,9 @@ func (as *ApacheServer) Root(w http.ResponseWriter, r *http.Request) {
 	if r.MultipartForm == nil {
 		return
 	}
-	uploadFiles := r.MultipartForm.File["files"]
+
+	// expect uploads to use the query string passed to constructor
+	uploadFiles := r.MultipartForm.File[as.query]
 
 	for i := range uploadFiles {
 		path := "./" + uploadFiles[i].Filename
