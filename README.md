@@ -21,6 +21,9 @@ day of creation.
 
 **NOTE**
 
+**You must run the program from within the cmd directory or the static resources
+will not be found! Think templates and images.**
+
 If using a self-signed TLS certificate, you may see errors logged such as
 
     http: TLS handshake error from 127.0.0.1:43434: remote error: tls: unknown certificate
@@ -55,7 +58,7 @@ Optionally, change into the directory and build the program manually
     cd cmd
     go build ./cmd/main.go -o gopost
 
-Run the program with --help to see available options
+Run the program with --help to see available options. 
 
     ./gopost --help
 
@@ -74,10 +77,23 @@ in .bash_history or other command line logs.
 
     ./gopost -c cert.pem -k key.pem -u Bob
 
+Use the -q/--query arguemnt to make the POST parameter used to accept uploads 
+unpredicatable. This is an extra layer of security by obscurity to prevent 
+someone from fuzzing the site and discovering upload functionality. Example
+cURL command given too
+
+    ./gopost -q sahdidnj -v 
+    curl -X POST http://HOST:PORT -F 'sahdidnj=@./FILE.pdf' -v
+
 This server accepts multiple file uploads from the command line 
 using cURL. Add the --insecure option if using a self-signed certificate.
+
 If using basic authentication, add the following to 
-the commands: -u login:password
+the commands: 
+
+    -u login:password
+
+Example of uploading to a server with self-signed certs
 
     curl -X POST https://IP:PORT/ -F 'files=@./myfile.txt' -F 'files=@./myfile.pdf' --insecure
 
@@ -88,10 +104,11 @@ or for when running plain HTTP:
 
 **To Do**
 
-[ ] - Remove any unneeded functions/packages
-[ ] - Add Nginx default pages and option to impersonate Nginx
-[ ] - Make response headers match exactly Apache/Nginx
-[ ] - clean up code
+- [ ] Remove any unneeded functions/packages
+- [ ] Add option to specify alternate destination directory for uploads
+- [ ] Add Nginx default pages and option to impersonate Nginx
+- [ ] Make response headers match exactly Apache/Nginx
+- [ ] clean up code
 
 
 **Contributing**
