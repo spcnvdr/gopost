@@ -108,7 +108,8 @@ or for when running plain HTTP:
 - [ ] Add option to specify alternate destination directory for uploads
 - [ ] Add Nginx default pages and option to impersonate Nginx
 - [ ] Make response headers match exactly Apache/Nginx
-- [ ] clean up code
+- [ ] Show server address in 404 response? 
+- [ ] Handle other error responses (400)
 
 
 **Contributing**

@@ -38,7 +38,7 @@ func (as *ApacheServer) SetupRoutes() {
 func (as *ApacheServer) setHeaders(w http.ResponseWriter) {
 	w.Header().Add("Server", "Apache/2.4.54 (Ubuntu)")
 	w.Header().Add("Accept-Ranges", "bytes")
-	w.Header().Add("Etag", "29af-5db4c92a77a00")
+	w.Header().Add("Etag", "\"29af-5db4c92a77a00-gzip\"")
 	w.Header().Add("Last-Modified", "Mon, 28 Mar 2022 19:46:48 GMT")
 
 }
@@ -48,6 +48,7 @@ func (as *ApacheServer) setHeaders(w http.ResponseWriter) {
 // parameter
 func (as *ApacheServer) Root(w http.ResponseWriter, r *http.Request) {
 	as.setHeaders(w)
+
 	// check basic auth if enabled
 	if !auth.CheckAuth(w, r, as.username, as.password, as.auth) {
 		auth.AuthFail(w, r, as.verbose)
@@ -72,6 +73,7 @@ func (as *ApacheServer) Root(w http.ResponseWriter, r *http.Request) {
 
 		// parse and execute Apache home template
 		as.Index(w, r)
+		w.Header().Add("Content-Type", "text/html")
 		return
 	}
 
@@ -132,6 +134,7 @@ func (as *ApacheServer) GetIcon(w http.ResponseWriter, r *http.Request) {
 }
 
 func (as *ApacheServer) NotFound(w http.ResponseWriter, r *http.Request) {
+	w.Header().Add("Content-Type", "text/html; charset=iso-8859-1")
 	templates := template.Must(template.ParseFiles("../resources/templates/404.html"))
 	w.WriteHeader(http.StatusNotFound)
 	if err := templates.Execute(w, nil); err != nil {
